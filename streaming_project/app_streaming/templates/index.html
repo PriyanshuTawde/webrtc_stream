@@ -1,11 +1,350 @@
-{% comment %} time and video controls {% endcomment %}
-{% comment %} <!DOCTYPE html>
+ {% comment %}
+Working 
+ 
+
+<!DOCTYPE html>
+ <html lang="en">
+ <head>
+   <meta charset="UTF-8" />
+   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+   <style>
+     /* Reset and Base Styles */
+     * {
+       margin: 0;
+       padding: 0;
+       box-sizing: border-box;
+     }
+     body, #root {
+       width: 100vw;
+       height: 100vh;
+       overflow: hidden;
+       background: #000;
+       font-family: Arial, sans-serif;
+     }
+     .video-grid {
+       display: grid;
+       width: 100vw;
+       height: 100vh;
+       gap: 2px;
+       background: #000;
+       padding: 2px;
+     }
+     .video-container {
+       position: relative;
+       width: 100%;
+       height: 100%;
+       background: #111;
+       border: 1px solid #222;
+       overflow: hidden;
+       
+       /* Enable container queries */
+       container-type: size;
+     }
+     video {
+       width: 100%;
+       height: 100%;
+       object-fit: cover;
+     }
+ 
+     /* Camera Label and Connection State */
+     .video-overlay {
+       position: absolute;
+       top: 10px;
+       left: 10px;
+       color: white;
+       z-index: 10;
+       text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+       font-size: 14px;
+       display: flex;
+       align-items: center;
+       gap: 8px; /* Space between camera name and dot */
+     }
+ 
+     .connection-state {
+       width: 10px;
+       height: 10px;
+       border-radius: 50%;
+     }
+     .connection-state.connected {
+       background: #4CAF50;
+     }
+     .connection-state.connecting {
+       background: #FFC107;
+     }
+     .connection-state.disconnected {
+       background: #F44336;
+     }
+ 
+     /* Timestamp: top-right with Responsive Font Size */
+     .timestamp {
+       position: absolute;
+       top: 10px;
+       right: 10px;
+       color: white;
+       background: rgba(0,0,0,0.7);
+       padding: 4px 8px;
+       border-radius: 4px;
+       font-size: clamp(12px, 2vw, 18px); /* Responsive font size */
+       z-index: 10;
+       
+       /* Smooth transition for font-size and padding changes */
+       transition: font-size 0.3s ease, padding 0.3s ease;
+     }
+ 
+     /* Header Style */
+     h1 {
+       position: absolute;
+       top: 0;
+       left: 0;
+       width: 100%;
+       text-align: center;
+       color: #0f0;
+       font-size: 24px;
+       background: rgba(0,0,0,0.5);
+       padding: 10px 0;
+       z-index: 100;
+       text-shadow: 1px 1px 2px #000;
+     }
+ 
+     /* Container Queries for Enhanced Responsiveness */
+     @container (max-width: 299px) {
+       .timestamp {
+         font-size: 12px;
+         padding: 3px 6px;
+       }
+     }
+ 
+     @container (min-width: 300px) and (max-width: 599px) {
+       .timestamp {
+         font-size: 14px;
+         padding: 4px 8px;
+       }
+     }
+ 
+     @container (min-width: 600px) and (max-width: 899px) {
+       .timestamp {
+         font-size: 16px;
+         padding: 5px 10px;
+       }
+     }
+ 
+     @container (min-width: 900px) {
+       .timestamp {
+         font-size: 18px;
+         padding: 6px 12px;
+       }
+     }
+   </style>
+ </head>
+ <body>
+   <div id="root">
+     <div class="video-grid" id="videoGrid"></div>
+   </div>
+   <script>
+     console.log("Inside Console");
+ 
+     let streamCount = 0;
+     const videoElements = [];
+     const peerConnections = {};
+ 
+     /**
+      * Function to create the video grid and request streams from the server.
+      * @param {number} count - The number of streaming videos to display.
+      */
+     function createGridAndRequestStreams(count) {
+       streamCount = count;
+ 
+       const columns = Math.ceil(Math.sqrt(streamCount));
+       const rows = Math.ceil(streamCount / columns);
+ 
+       const videoGrid = document.getElementById('videoGrid');
+       videoGrid.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+       videoGrid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+ 
+       for (let i = 0; i < streamCount; i++) {
+         const container = document.createElement('div');
+         container.className = 'video-container';
+ 
+         const video = document.createElement('video');
+         video.id = `video${i}`;
+         video.autoplay = true;
+         video.playsInline = true;
+         video.muted = true;
+         video.controls = true;
+         container.appendChild(video);
+ 
+         const overlay = document.createElement('div');
+         overlay.className = 'video-overlay';
+ 
+         const cameraLabel = document.createElement('span');
+         cameraLabel.textContent = `Camera ${i + 1}`;
+         overlay.appendChild(cameraLabel);
+ 
+         const stateIndicator = document.createElement('div');
+         stateIndicator.className = 'connection-state connecting';
+         overlay.appendChild(stateIndicator);
+ 
+         container.appendChild(overlay);
+ 
+         const timestamp = document.createElement('div');
+         timestamp.className = 'timestamp';
+         timestamp.textContent = new Date().toLocaleTimeString();
+         container.appendChild(timestamp);
+ 
+         videoGrid.appendChild(container);
+         videoElements.push(video);
+       }
+ 
+       // Now request each stream from the server
+       for (let i = 0; i < streamCount; i++) {
+         ws.send(JSON.stringify({ type: 'request_stream', streamId: i }));
+       }
+ 
+       // Adjust timestamps after grid creation
+       adjustTimestampSizes();
+     }
+ 
+     /**
+      * Function to adjust the sizes of the timestamp elements based on their container sizes.
+      */
+     function adjustTimestampSizes() {
+       const videoContainers = document.querySelectorAll('.video-container');
+       videoContainers.forEach(container => {
+         const timestamp = container.querySelector('.timestamp');
+         const containerWidth = container.offsetWidth;
+         
+         // Example: set font size to 2% of container width, clamped between 12px and 18px
+         let fontSize = containerWidth * 0.02; // 2%
+         fontSize = Math.max(12, Math.min(fontSize, 18)); // Clamp between 12px and 18px
+         timestamp.style.fontSize = `${fontSize}px`;
+         
+         // Adjust padding proportionally
+         timestamp.style.padding = `${fontSize * 0.2}px ${fontSize * 0.4}px`;
+       });
+     }
+ 
+     // Initialize WebSocket connection dynamically based on the current host
+     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+     const ws = new WebSocket(`${wsProtocol}://${window.location.host}/ws/stream/`);
+ 
+     ws.onopen = () => {
+       console.log("WebSocket connection established.");
+       // Wait for 'stream_count' from the server
+     };
+ 
+     ws.onmessage = async (event) => {
+       const data = JSON.parse(event.data);
+       console.log("Received data:", data);
+ 
+       if (data.type === 'stream_count') {
+         createGridAndRequestStreams(data.count);
+       } else if (data.type === 'offer_needed') {
+         const pc = new RTCPeerConnection({
+           iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+         });
+         peerConnections[data.streamId] = pc;
+         videoElements[data.streamId].srcObject = new MediaStream();
+ 
+         pc.addTransceiver('video', { direction: 'recvonly' });
+ 
+         pc.ontrack = (event) => {
+           event.streams[0].getTracks().forEach((track) => {
+             videoElements[data.streamId].srcObject.addTrack(track);
+           });
+         };
+ 
+         pc.onicecandidate = (event) => {
+           if (event.candidate) {
+             ws.send(JSON.stringify({
+               type: 'ice',
+               streamId: data.streamId,
+               candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
+             }));
+           }
+         };
+ 
+         pc.onconnectionstatechange = () => {
+           console.log(`Connection state for stream ${data.streamId}: ${pc.connectionState}`);
+           const container = videoElements[data.streamId].parentElement;
+           const stateIndicator = container.querySelector('.connection-state');
+           if (pc.connectionState === 'connected') {
+             stateIndicator.className = 'connection-state connected';
+           } else if (pc.connectionState === 'connecting') {
+             stateIndicator.className = 'connection-state connecting';
+           } else {
+             stateIndicator.className = 'connection-state disconnected';
+           }
+         };
+ 
+         const offer = await pc.createOffer();
+         await pc.setLocalDescription(offer);
+ 
+         ws.send(JSON.stringify({
+           type: 'offer',
+           streamId: data.streamId,
+           sdp: offer.sdp
+         }));
+       } else if (data.type === 'answer') {
+         const pc = peerConnections[data.streamId];
+         if (!pc) {
+           console.error('No PeerConnection found for streamId', data.streamId);
+           return;
+         }
+         const desc = new RTCSessionDescription({ type: 'answer', sdp: data.sdp });
+         await pc.setRemoteDescription(desc);
+       } else if (data.type === 'ice') {
+         const pc = peerConnections[data.streamId];
+         if (pc && data.candidate) {
+           try {
+             await pc.addIceCandidate(data.candidate);
+           } catch (e) {
+             console.error('Error adding received ICE candidate', e);
+           }
+         }
+       } else if (data.type === 'error') {
+         console.error('Error from server:', data.message);
+       }
+     };
+ 
+     ws.onerror = (error) => {
+       console.error('WebSocket error:', error);
+     };
+ 
+     ws.onclose = () => {
+       console.log('WebSocket connection closed.');
+     };
+ 
+     // Update timestamps every second for accuracy
+     setInterval(() => {
+       const timestamps = document.querySelectorAll('.timestamp');
+       timestamps.forEach(ts => {
+         ts.textContent = new Date().toLocaleTimeString();
+       });
+     }, 1000); // Update every second
+ 
+     // Adjust timestamp sizes on window resize
+     window.addEventListener('resize', adjustTimestampSizes);
+ 
+     // Optional: Adjust timestamp sizes when the DOM is fully loaded
+     window.addEventListener('load', adjustTimestampSizes);
+   </script>
+ </body>
+ </html>
+  {% endcomment %}
+
+
+
+
+
+{% comment %}  
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>WebRTC Streaming Grid</title>
+  <title>Live Video Streams</title>
   <style>
+    /* Reset and Base Styles */
     * {
       margin: 0;
       padding: 0;
@@ -33,6 +372,9 @@
       background: #111;
       border: 1px solid #222;
       overflow: hidden;
+      
+      /* Enable container queries */
+      container-type: size;
     }
     video {
       width: 100%;
@@ -40,41 +382,24 @@
       object-fit: cover;
     }
 
-    /* Camera label: top-left */
+    /* Camera Label and Connection State */
     .video-overlay {
       position: absolute;
       top: 10px;
       left: 10px;
       color: white;
       z-index: 10;
-      text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
       font-size: 14px;
-      /* You can adjust spacing if you want the text a bit away from the top/left corner */
+      display: flex;
+      align-items: center;
+      gap: 8px; /* Space between camera name and dot */
     }
 
-    /* Timestamp: top-right */
-    .timestamp {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      color: white;
-      background: rgba(0,0,0,0.7);
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 14px;
-      z-index: 10;
-    }
-
-    /* Connection-state indicator can remain top-right or you can move it.
-       Let's keep it near the timestamp or just shift it slightly. */
     .connection-state {
-      position: absolute;
-      top: 10px;
-      right: 50px; /* Shift left from the top-right corner to not overlap the timestamp. */
       width: 10px;
       height: 10px;
       border-radius: 50%;
-      z-index: 10;
     }
     .connection-state.connected {
       background: #4CAF50;
@@ -86,6 +411,23 @@
       background: #F44336;
     }
 
+    /* Timestamp: top-right with Responsive Font Size */
+    .timestamp {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      color: white;
+      background: rgba(0,0,0,0.7);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: clamp(12px, 2vw, 18px); /* Responsive font size */
+      z-index: 10;
+      
+      /* Smooth transition for font-size and padding changes */
+      transition: font-size 0.3s ease, padding 0.3s ease;
+    }
+
+    /* Header Style */
     h1 {
       position: absolute;
       top: 0;
@@ -99,11 +441,39 @@
       z-index: 100;
       text-shadow: 1px 1px 2px #000;
     }
+
+    /* Container Queries for Enhanced Responsiveness */
+    @container (max-width: 299px) {
+      .timestamp {
+        font-size: 12px;
+        padding: 3px 6px;
+      }
+    }
+
+    @container (min-width: 300px) and (max-width: 599px) {
+      .timestamp {
+        font-size: 14px;
+        padding: 4px 8px;
+      }
+    }
+
+    @container (min-width: 600px) and (max-width: 899px) {
+      .timestamp {
+        font-size: 16px;
+        padding: 5px 10px;
+      }
+    }
+
+    @container (min-width: 900px) {
+      .timestamp {
+        font-size: 18px;
+        padding: 6px 12px;
+      }
+    }
   </style>
 </head>
 <body>
   <div id="root">
-    <h1>Live Streaming Feeds</h1>
     <div class="video-grid" id="videoGrid"></div>
   </div>
   <script>
@@ -113,6 +483,10 @@
     const videoElements = [];
     const peerConnections = {};
 
+    /**
+     * Function to create the video grid and request streams from the server.
+     * @param {number} count - The number of streaming videos to display.
+     */
     function createGridAndRequestStreams(count) {
       streamCount = count;
 
@@ -131,273 +505,8 @@
         video.id = `video${i}`;
         video.autoplay = true;
         video.playsInline = true;
-        video.muted = true;
-        video.controls = true;
-        container.appendChild(video);
-
-        const overlay = document.createElement('div');
-        overlay.className = 'video-overlay';
-        overlay.textContent = `Camera ${i + 1}`;
-        container.appendChild(overlay);
-
-        const stateIndicator = document.createElement('div');
-        stateIndicator.className = 'connection-state connecting';
-        container.appendChild(stateIndicator);
-
-        const timestamp = document.createElement('div');
-        timestamp.className = 'timestamp';
-        timestamp.textContent = new Date().toLocaleTimeString();
-        container.appendChild(timestamp);
-
-        videoGrid.appendChild(container);
-        videoElements.push(video);
-      }
-
-      // Now request each stream from the server
-      for (let i = 0; i < streamCount; i++) {
-        ws.send(JSON.stringify({ type: 'request_stream', streamId: i }));
-      }
-    }
-
-    const ws = new WebSocket('ws://localhost:8000/ws/stream/');
-
-    ws.onopen = () => {
-      console.log("WebSocket connection established.");
-      // Wait for 'stream_count' from the server
-    };
-
-    ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
-      console.log("Received data:", data);
-
-      if (data.type === 'stream_count') {
-        createGridAndRequestStreams(data.count);
-
-      } else if (data.type === 'offer_needed') {
-        const pc = new RTCPeerConnection({
-          iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ]
-        });
-        peerConnections[data.streamId] = pc;
-        videoElements[data.streamId].srcObject = new MediaStream();
-
-        pc.addTransceiver('video', { direction: 'recvonly' });
-
-        pc.ontrack = (event) => {
-          event.streams[0].getTracks().forEach((track) => {
-            videoElements[data.streamId].srcObject.addTrack(track);
-          });
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            ws.send(JSON.stringify({
-              type: 'ice',
-              streamId: data.streamId,
-              candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
-            }));
-          }
-        };
-
-        pc.onconnectionstatechange = () => {
-          console.log(`Connection state for stream ${data.streamId}: ${pc.connectionState}`);
-          const container = videoElements[data.streamId].parentElement;
-          const stateIndicator = container.querySelector('.connection-state');
-          if (pc.connectionState === 'connected') {
-            stateIndicator.className = 'connection-state connected';
-          } else if (pc.connectionState === 'connecting') {
-            stateIndicator.className = 'connection-state connecting';
-          } else {
-            stateIndicator.className = 'connection-state disconnected';
-          }
-        };
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        ws.send(JSON.stringify({
-          type: 'offer',
-          streamId: data.streamId,
-          sdp: offer.sdp
-        }));
-
-      } else if (data.type === 'answer') {
-        const pc = peerConnections[data.streamId];
-        if (!pc) {
-          console.error('No PC found for streamId', data.streamId);
-          return;
-        }
-        const desc = new RTCSessionDescription({ type: 'answer', sdp: data.sdp });
-        await pc.setRemoteDescription(desc);
-
-      } else if (data.type === 'ice') {
-        const pc = peerConnections[data.streamId];
-        if (pc && data.candidate) {
-          try {
-            await pc.addIceCandidate(data.candidate);
-          } catch (e) {
-            console.error('Error adding received ice candidate', e);
-          }
-        }
-
-      } else if (data.type === 'error') {
-        console.error('Error from server:', data.message);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket connection closed.');
-    };
-
-    // Update timestamps: now every second for "more accurate" feel
-    setInterval(() => {
-      const timestamps = document.querySelectorAll('.timestamp');
-      timestamps.forEach(ts => {
-        ts.textContent = new Date().toLocaleTimeString();
-      });
-    }, 1000); // 1 second = 1000 ms
-  </script>
-</body>
-</html> {% endcomment %}
-
-
-
-
-{% comment %} proper working on 10fps {% endcomment %}
-
-
-{% comment %} 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>WebRTC Streaming Grid</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    body, #root {
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
-      background: #000;
-      font-family: Arial, sans-serif;
-    }
-    .video-grid {
-      display: grid;
-      width: 100vw;
-      height: 100vh;
-      gap: 2px;
-      background: #000;
-      padding: 2px;
-    }
-    .video-container {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      background: #111;
-      border: 1px solid #222;
-      overflow: hidden;
-    }
-    video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    /* Camera label and connection state */
-    .video-overlay {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      color: white;
-      z-index: 10;
-      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px; /* Space between camera name and dot */
-    }
-
-    .connection-state {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-    .connection-state.connected {
-      background: #4CAF50;
-    }
-    .connection-state.connecting {
-      background: #FFC107;
-    }
-    .connection-state.disconnected {
-      background: #F44336;
-    }
-
-    /* Timestamp: top-right */
-    .timestamp {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      color: white;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 14px;
-      z-index: 10;
-    }
-
-    h1 {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      text-align: center;
-      color: #0f0;
-      font-size: 24px;
-      background: rgba(0, 0, 0, 0.5);
-      padding: 10px 0;
-      z-index: 100;
-      text-shadow: 1px 1px 2px #000;
-    }
-  </style>
-</head>
-<body>
-  <div id="root">
-    <h1>Live Streaming Feeds</h1>
-    <div class="video-grid" id="videoGrid"></div>
-  </div>
-  <script>
-    let streamCount = 0;
-    const videoElements = [];
-    const peerConnections = {};
-
-    function createGridAndRequestStreams(count) {
-      streamCount = count;
-
-      const columns = Math.ceil(Math.sqrt(streamCount));
-      const rows = Math.ceil(streamCount / columns);
-
-      const videoGrid = document.getElementById('videoGrid');
-      videoGrid.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
-      videoGrid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-
-      for (let i = 0; i < streamCount; i++) {
-        const container = document.createElement('div');
-        container.className = 'video-container';
-
-        const video = document.createElement('video');
-        video.id = `video${i}`;
-        video.autoplay = true;
-        video.playsInline = true;
-        video.muted = true;
-        video.controls = true;
+        video.controls = true; // Enable video controls
+        video.muted = true; // Muted to prevent autoplay issues
         container.appendChild(video);
 
         const overlay = document.createElement('div');
@@ -422,99 +531,219 @@
         videoElements.push(video);
       }
 
-      // Now request each stream from the server
-      for (let i = 0; i < streamCount; i++) {
-        ws.send(JSON.stringify({ type: 'request_stream', streamId: i }));
-      }
+      // Now request each stream from the server sequentially
+      requestStreamsSequentially(0);
+      
+      // Adjust timestamps after grid creation
+      adjustTimestampSizes();
     }
 
-    const ws = new WebSocket('ws://localhost:8000/ws/stream/');
+    /**
+     * Function to request streams one by one using async/await to reduce load.
+     * @param {number} index - The current stream index to request.
+     */
+    async function requestStreamsSequentially(index) {
+      if (index >= streamCount) return; // Base case: all streams requested
 
-    ws.onopen = () => {
-      console.log("WebSocket connection established.");
-    };
+      // Request the current stream
+      ws.send(JSON.stringify({ type: 'request_stream', streamId: index }));
+      console.log(`Requested stream ID: ${index}`);
 
-    ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
-      console.log("Received data:", data);
+      // Wait for the stream to be established before requesting the next one
+      // This can be achieved by waiting for the 'offer_needed' message for this stream
+      await waitForOfferNeeded(index);
 
-      if (data.type === 'stream_count') {
-        createGridAndRequestStreams(data.count);
-      } else if (data.type === 'offer_needed') {
-        const pc = new RTCPeerConnection({
-          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        });
-        peerConnections[data.streamId] = pc;
-        videoElements[data.streamId].srcObject = new MediaStream();
+      // Proceed to the next stream
+      await requestStreamsSequentially(index + 1);
+    }
 
-        pc.addTransceiver('video', { direction: 'recvonly' });
-
-        pc.ontrack = (event) => {
-          event.streams[0].getTracks().forEach((track) => {
-            videoElements[data.streamId].srcObject.addTrack(track);
-          });
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            ws.send(JSON.stringify({
-              type: 'ice',
-              streamId: data.streamId,
-              candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
-            }));
+    /**
+     * Function to wait for the 'offer_needed' message for a specific stream.
+     * @param {number} streamId - The ID of the stream to wait for.
+     * @returns {Promise} - Resolves when 'offer_needed' is received.
+     */
+    function waitForOfferNeeded(streamId) {
+      return new Promise((resolve) => {
+        function handleMessage(event) {
+          const data = JSON.parse(event.data);
+          if (data.type === 'offer_needed' && data.streamId === streamId) {
+            ws.removeEventListener('message', handleMessage);
+            resolve();
           }
-        };
+        }
 
-        pc.onconnectionstatechange = () => {
-          console.log(`Connection state for stream ${data.streamId}: ${pc.connectionState}`);
-          const container = videoElements[data.streamId].parentElement;
-          const stateIndicator = container.querySelector('.connection-state');
-          if (pc.connectionState === 'connected') {
-            stateIndicator.className = 'connection-state connected';
-          } else if (pc.connectionState === 'connecting') {
-            stateIndicator.className = 'connection-state connecting';
-          } else {
+        ws.addEventListener('message', handleMessage);
+      });
+    }
+
+    /**
+     * Function to adjust the sizes of the timestamp elements based on their container sizes.
+     */
+    function adjustTimestampSizes() {
+      const videoContainers = document.querySelectorAll('.video-container');
+      videoContainers.forEach(container => {
+        const timestamp = container.querySelector('.timestamp');
+        const containerWidth = container.offsetWidth;
+        
+        // Example: set font size to 2% of container width, clamped between 12px and 18px
+        let fontSize = containerWidth * 0.02; // 2%
+        fontSize = Math.max(12, Math.min(fontSize, 18)); // Clamp between 12px and 18px
+        timestamp.style.fontSize = `${fontSize}px`;
+        
+        // Adjust padding proportionally
+        timestamp.style.padding = `${fontSize * 0.2}px ${fontSize * 0.4}px`;
+      });
+    }
+
+    /**
+     * Function to initialize the WebSocket connection.
+     */
+    function initializeWebSocket() {
+      // Initialize WebSocket connection dynamically based on the current host
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsPath = '/ws/stream/'; // Adjust the WebSocket path as needed
+      const wsUrl = `${wsProtocol}://${window.location.host}${wsPath}`;
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log("WebSocket connection established.");
+        // Wait for 'stream_count' from the server
+      };
+
+      ws.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        console.log("Received data:", data);
+
+        if (data.type === 'stream_count') {
+          createGridAndRequestStreams(data.count);
+        } else if (data.type === 'offer_needed') {
+          initiateWebRTCConnection(data.streamId);
+        } else if (data.type === 'answer') {
+          const pc = peerConnections[data.streamId];
+          if (!pc) {
+            console.error('No PeerConnection found for streamId', data.streamId);
+            return;
+          }
+          const desc = new RTCSessionDescription({ type: 'answer', sdp: data.sdp });
+          try {
+            await pc.setRemoteDescription(desc);
+            console.log(`Set remote description for stream ${data.streamId}`);
+          } catch (e) {
+            console.error(`Error setting remote description for stream ${data.streamId}:`, e);
+          }
+        } else if (data.type === 'ice') {
+          const pc = peerConnections[data.streamId];
+          if (pc && data.candidate) {
+            try {
+              await pc.addIceCandidate(data.candidate);
+              console.log(`Added ICE candidate for stream ${data.streamId}`);
+            } catch (e) {
+              console.error('Error adding received ICE candidate', e);
+            }
+          }
+        } else if (data.type === 'error') {
+          console.error('Error from server:', data.message);
+          // Optionally, update the UI to reflect the error state
+          const container = videoElements[data.streamId]?.parentElement;
+          if (container) {
+            const stateIndicator = container.querySelector('.connection-state');
             stateIndicator.className = 'connection-state disconnected';
           }
-        };
+        } else if (data.type === 'ping') {
+          // Respond to server's ping
+          ws.send(JSON.stringify({ type: 'pong' }));
+          console.debug("Sent pong to server.");
+        }
+      };
 
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket connection closed. Attempting to reconnect...');
+        // Attempt to reconnect after a delay
+        setTimeout(() => {
+          initializeWebSocket();
+        }, 5000); // Retry after 5 seconds
+      };
+    }
+
+    /**
+     * Function to initiate a WebRTC connection for a specific stream ID.
+     * @param {number} streamId - The ID of the stream to connect.
+     */
+    async function initiateWebRTCConnection(streamId) {
+      if (peerConnections[streamId]) {
+        console.warn(`PeerConnection for stream ${streamId} already exists.`);
+        return;
+      }
+
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        // Add TURN servers here if available
+        // iceServers: [
+        //   { urls: 'stun:stun.l.google.com:19302' },
+        //   { urls: 'turn:your.turn.server:3478', username: 'user', credential: 'pass' }
+        // ]
+      });
+      peerConnections[streamId] = pc;
+      videoElements[streamId].srcObject = new MediaStream();
+
+      pc.addTransceiver('video', { direction: 'recvonly' });
+
+      pc.ontrack = (event) => {
+        event.streams[0].getTracks().forEach((track) => {
+          videoElements[streamId].srcObject.addTrack(track);
+        });
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          ws.send(JSON.stringify({
+            type: 'ice',
+            streamId: streamId,
+            candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
+          }));
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        console.log(`Connection state for stream ${streamId}: ${pc.iceConnectionState}`);
+        const container = videoElements[streamId].parentElement;
+        const stateIndicator = container.querySelector('.connection-state');
+        if (pc.iceConnectionState === 'connected') {
+          stateIndicator.className = 'connection-state connected';
+        } else if (pc.iceConnectionState === 'checking' || pc.iceConnectionState === 'new') {
+          stateIndicator.className = 'connection-state connecting';
+        } else {
+          stateIndicator.className = 'connection-state disconnected';
+          // Optionally attempt to reconnect
+          setTimeout(() => {
+            initiateWebRTCConnection(streamId);
+          }, 5000); // Retry after 5 seconds
+        }
+      };
+
+      try {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
         ws.send(JSON.stringify({
           type: 'offer',
-          streamId: data.streamId,
+          streamId: streamId,
           sdp: offer.sdp
         }));
-      } else if (data.type === 'answer') {
-        const pc = peerConnections[data.streamId];
-        if (!pc) {
-          console.error('No PC found for streamId', data.streamId);
-          return;
-        }
-        const desc = new RTCSessionDescription({ type: 'answer', sdp: data.sdp });
-        await pc.setRemoteDescription(desc);
-      } else if (data.type === 'ice') {
-        const pc = peerConnections[data.streamId];
-        if (pc && data.candidate) {
-          try {
-            await pc.addIceCandidate(data.candidate);
-          } catch (e) {
-            console.error('Error adding received ice candidate', e);
-          }
-        }
-      } else if (data.type === 'error') {
-        console.error('Error from server:', data.message);
+
+        console.log(`Sent offer for stream ${streamId}`);
+      } catch (error) {
+        console.error(`Error creating offer for stream ${streamId}:`, error);
       }
-    };
+    }
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket connection closed.');
-    };
+    // Initialize WebSocket connection
+    let ws;
+    initializeWebSocket();
 
     // Update timestamps every second for accuracy
     setInterval(() => {
@@ -522,273 +751,548 @@
       timestamps.forEach(ts => {
         ts.textContent = new Date().toLocaleTimeString();
       });
-    }, 1000);
-  </script>
-</body>
-</html> {% endcomment %}
+    }, 1000); // Update every second
 
+    // Adjust timestamp sizes on window resize
+    window.addEventListener('resize', adjustTimestampSizes);
 
-
-
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>WebRTC Streaming Grid</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    body, #root {
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
-      background: #000;
-      font-family: Arial, sans-serif;
-    }
-    .video-grid {
-      display: grid;
-      width: 100vw;
-      height: 100vh;
-      gap: 2px;
-      background: #000;
-      padding: 2px;
-    }
-    .video-container {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      background: #111;
-      border: 1px solid #222;
-      overflow: hidden;
-    }
-    video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    /* Camera label and connection state */
-    .video-overlay {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      color: white;
-      z-index: 10;
-      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px; /* Space between camera name and dot */
-    }
-
-    .connection-state {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-    .connection-state.connected {
-      background: #4CAF50;
-    }
-    .connection-state.connecting {
-      background: #FFC107;
-    }
-    .connection-state.disconnected {
-      background: #F44336;
-    }
-
-    /* Timestamp: top-right */
-    .timestamp {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      color: white;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 14px;
-      z-index: 10;
-    }
-
-    h1 {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      text-align: center;
-      color: #0f0;
-      font-size: 24px;
-      background: rgba(0, 0, 0, 0.5);
-      padding: 10px 0;
-      z-index: 100;
-      text-shadow: 1px 1px 2px #000;
-    }
-  </style>
-</head>
-<body>
-  <div id="root">
-    <h1>Live Streaming Feeds</h1>
-    <div class="video-grid" id="videoGrid"></div>
-  </div>
-  <script>
-    console.log("Inside Console");
-
-    let streamCount = 0;
-    const videoElements = [];
-    const peerConnections = {};
-
-    function createGridAndRequestStreams(count) {
-      streamCount = count;
-
-      const columns = Math.ceil(Math.sqrt(streamCount));
-      const rows = Math.ceil(streamCount / columns);
-
-      const videoGrid = document.getElementById('videoGrid');
-      videoGrid.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
-      videoGrid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-
-      for (let i = 0; i < streamCount; i++) {
-        const container = document.createElement('div');
-        container.className = 'video-container';
-
-        const video = document.createElement('video');
-        video.id = `video${i}`;
-        video.autoplay = true;
-        video.playsInline = true;
-        video.muted = true;
-        video.controls = true;
-        container.appendChild(video);
-
-        const overlay = document.createElement('div');
-        overlay.className = 'video-overlay';
-
-        const cameraLabel = document.createElement('span');
-        cameraLabel.textContent = `Camera ${i + 1}`;
-        overlay.appendChild(cameraLabel);
-
-        const stateIndicator = document.createElement('div');
-        stateIndicator.className = 'connection-state connecting';
-        overlay.appendChild(stateIndicator);
-
-        container.appendChild(overlay);
-
-        const timestamp = document.createElement('div');
-        timestamp.className = 'timestamp';
-        timestamp.textContent = new Date().toLocaleTimeString();
-        container.appendChild(timestamp);
-
-        videoGrid.appendChild(container);
-        videoElements.push(video);
-      }
-
-      // Now request each stream from the server
-      for (let i = 0; i < streamCount; i++) {
-        ws.send(JSON.stringify({ type: 'request_stream', streamId: i }));
-      }
-    }
-
-    const ws = new WebSocket('ws://localhost:8000/ws/stream/');
-
-    ws.onopen = () => {
-      console.log("WebSocket connection established.");
-      // Wait for 'stream_count' from the server
-    };
-
-    ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
-      console.log("Received data:", data);
- 
-      if (data.type === 'stream_count') {
-        createGridAndRequestStreams(data.count);
-      } else if (data.type === 'offer_needed') {
-        const pc = new RTCPeerConnection({
-          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        });
-        peerConnections[data.streamId] = pc;
-        videoElements[data.streamId].srcObject = new MediaStream();
-
-        pc.addTransceiver('video', { direction: 'recvonly' });
-
-        pc.ontrack = (event) => {
-          event.streams[0].getTracks().forEach((track) => {
-            videoElements[data.streamId].srcObject.addTrack(track);
-          });
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            ws.send(JSON.stringify({
-              type: 'ice',
-              streamId: data.streamId,
-              candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
-            }));
-          }
-        };
-
-        pc.onconnectionstatechange = () => {
-          console.log(`Connection state for stream ${data.streamId}: ${pc.connectionState}`);
-          const container = videoElements[data.streamId].parentElement;
-          const stateIndicator = container.querySelector('.connection-state');
-          if (pc.connectionState === 'connected') {
-            stateIndicator.className = 'connection-state connected';
-          } else if (pc.connectionState === 'connecting') {
-            stateIndicator.className = 'connection-state connecting';
-          } else {
-            stateIndicator.className = 'connection-state disconnected';
-          }
-        };
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        ws.send(JSON.stringify({
-          type: 'offer',
-          streamId: data.streamId,
-          sdp: offer.sdp
-        }));
-      } else if (data.type === 'answer') {
-        const pc = peerConnections[data.streamId];
-        if (!pc) {
-          console.error('No PC found for streamId', data.streamId);
-          return;
-        }
-        const desc = new RTCSessionDescription({ type: 'answer', sdp: data.sdp });
-        await pc.setRemoteDescription(desc);
-      } else if (data.type === 'ice') {
-        const pc = peerConnections[data.streamId];
-        if (pc && data.candidate) {
-          try {
-            await pc.addIceCandidate(data.candidate);
-          } catch (e) {
-            console.error('Error adding received ice candidate', e);
-          }
-        }
-      } else if (data.type === 'error') {
-        console.error('Error from server:', data.message);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket connection closed.');
-    };
-
-    // Update timestamps every second for accuracy
-    setInterval(() => {
-      const timestamps = document.querySelectorAll('.timestamp');
-      timestamps.forEach(ts => {
-        ts.textContent = new Date().toLocaleTimeString();
-      });
-    }, 1000);
+    // Optional: Adjust timestamp sizes when the DOM is fully loaded
+    window.addEventListener('load', adjustTimestampSizes);
   </script>
 </body>
 </html>
 
 
+
+
+
+ {% endcomment %}
+
+
+ <!DOCTYPE html>
+ <html lang="en">
+ <head>
+   <meta charset="UTF-8" />
+   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+   <title>Live Video Streams</title>
+   <style>
+     /* Reset and Base Styles */
+     * {
+       margin: 0;
+       padding: 0;
+       box-sizing: border-box;
+     }
+     body, #root {
+       width: 100vw;
+       height: 100vh;
+       overflow: hidden;
+       background: #000;
+       font-family: Arial, sans-serif;
+     }
+     .video-grid {
+       display: grid;
+       width: 100vw;
+       height: 100vh;
+       gap: 2px;
+       background: #000;
+       padding: 2px;
+     }
+     .video-container {
+       position: relative;
+       width: 100%;
+       height: 100%;
+       background: #111;
+       border: 1px solid #222;
+       overflow: hidden;
+       
+       /* Enable container queries */
+       container-type: size;
+     }
+     video {
+       width: 100%;
+       height: 100%;
+       object-fit: cover;
+     }
+ 
+     /* Camera Label and Connection State */
+     .video-overlay {
+       position: absolute;
+       top: 10px;
+       left: 10px;
+       color: white;
+       z-index: 10;
+       text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+       font-size: 14px;
+       display: flex;
+       align-items: center;
+       gap: 8px; /* Space between camera name and dot */
+     }
+ 
+     .connection-state {
+       width: 10px;
+       height: 10px;
+       border-radius: 50%;
+     }
+     .connection-state.connected {
+       background: #4CAF50;
+     }
+     .connection-state.connecting {
+       background: #FFC107;
+     }
+     .connection-state.disconnected {
+       background: #F44336;
+     }
+ 
+     /* Timestamp: top-right with Responsive Font Size */
+     .timestamp {
+       position: absolute;
+       top: 10px;
+       right: 10px;
+       color: white;
+       background: rgba(0,0,0,0.7);
+       padding: 4px 8px;
+       border-radius: 4px;
+       font-size: clamp(12px, 2vw, 18px); /* Responsive font size */
+       z-index: 10;
+       
+       /* Smooth transition for font-size and padding changes */
+       transition: font-size 0.3s ease, padding 0.3s ease;
+     }
+ 
+     /* Header Style */
+     h1 {
+       position: absolute;
+       top: 0;
+       left: 0;
+       width: 100%;
+       text-align: center;
+       color: #0f0;
+       font-size: 24px;
+       background: rgba(0,0,0,0.5);
+       padding: 10px 0;
+       z-index: 100;
+       text-shadow: 1px 1px 2px #000;
+     }
+ 
+     /* Container Queries for Enhanced Responsiveness */
+     @container (max-width: 299px) {
+       .timestamp {
+         font-size: 12px;
+         padding: 3px 6px;
+       }
+     }
+ 
+     @container (min-width: 300px) and (max-width: 599px) {
+       .timestamp {
+         font-size: 14px;
+         padding: 4px 8px;
+       }
+     }
+ 
+     @container (min-width: 600px) and (max-width: 899px) {
+       .timestamp {
+         font-size: 16px;
+         padding: 5px 10px;
+       }
+     }
+ 
+     @container (min-width: 900px) {
+       .timestamp {
+         font-size: 18px;
+         padding: 6px 12px;
+       }
+     }
+ 
+     /* Quality Control Buttons */
+     .controls {
+       position: absolute;
+       bottom: 10px;
+       left: 10px;
+       z-index: 10;
+       display: flex;
+       gap: 10px;
+     }
+ 
+     .controls button {
+       padding: 6px 12px;
+       background-color: rgba(255, 255, 255, 0.8);
+       border: none;
+       border-radius: 4px;
+       cursor: pointer;
+       transition: background-color 0.3s ease;
+       font-size: 14px;
+     }
+ 
+     .controls button:hover {
+       background-color: rgba(255, 255, 255, 1);
+     }
+ 
+     /* Expanded Container Styling */
+     .video-container.expanded {
+       grid-column: span 2; /* Example: spans two columns */
+       grid-row: span 2;    /* Example: spans two rows */
+     }
+   </style>
+ </head>
+ <body>
+   <h1>Live Video Streams</h1>
+   <div id="root" style="margin-top: 60px;"> <!-- Added margin-top to prevent overlap with header -->
+     <div class="video-grid" id="videoGrid"></div>
+   </div>
+   <script>
+     console.log("Inside Console");
+ 
+     let streamCount = 0;
+     const videoElements = [];
+     const peerConnections = {};
+ 
+     /**
+      * Function to create the video grid and request streams from the server.
+      * @param {number} count - The number of streaming videos to display.
+      */
+     function createGridAndRequestStreams(count) {
+       streamCount = count;
+ 
+       const columns = Math.ceil(Math.sqrt(streamCount));
+       const rows = Math.ceil(streamCount / columns);
+ 
+       const videoGrid = document.getElementById('videoGrid');
+       videoGrid.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+       videoGrid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+ 
+       for (let i = 0; i < streamCount; i++) {
+         const container = document.createElement('div');
+         container.className = 'video-container';
+         container.id = `videoContainer-${i}`; // Assign unique ID
+ 
+         const video = document.createElement('video');
+         video.id = `video${i}`;
+         video.autoplay = true;
+         video.playsInline = true;
+         video.controls = true; // Enable video controls
+         video.muted = true; // Muted to prevent autoplay issues
+         container.appendChild(video);
+ 
+         const overlay = document.createElement('div');
+         overlay.className = 'video-overlay';
+ 
+         const cameraLabel = document.createElement('span');
+         cameraLabel.textContent = `Camera ${i + 1}`;
+         overlay.appendChild(cameraLabel);
+ 
+         const stateIndicator = document.createElement('div');
+         stateIndicator.className = 'connection-state connecting';
+         overlay.appendChild(stateIndicator);
+ 
+         container.appendChild(overlay);
+ 
+         const timestamp = document.createElement('div');
+         timestamp.className = 'timestamp';
+         timestamp.textContent = new Date().toLocaleTimeString();
+         container.appendChild(timestamp);
+ 
+         // Quality Control Buttons
+         const controls = document.createElement('div');
+         controls.className = 'controls';
+ 
+         // Expand/Shrink Container Button
+         const resizeButton = document.createElement('button');
+         resizeButton.id = `resizeContainerBtn-${i}`;
+         resizeButton.textContent = 'Expand Container';
+         resizeButton.addEventListener('click', () => toggleContainerSize(i));
+         controls.appendChild(resizeButton);
+ 
+         // Increase/Reset Quality Button
+         const qualityButton = document.createElement('button');
+         qualityButton.id = `qualityControlBtn-${i}`;
+         qualityButton.textContent = 'Increase Quality';
+         qualityButton.dataset.streamId = i; // Assign stream ID
+         qualityButton.dataset.quality = 'default'; // Track current quality
+         qualityButton.addEventListener('click', () => toggleQuality(i));
+         controls.appendChild(qualityButton);
+ 
+         container.appendChild(controls);
+ 
+         videoGrid.appendChild(container);
+         videoElements.push(video);
+       }
+ 
+       // Now request each stream from the server sequentially
+       requestStreamsSequentially(0);
+       
+       // Adjust timestamps after grid creation
+       adjustTimestampSizes();
+     }
+ 
+     /**
+      * Function to toggle the quality of a specific stream.
+      * @param {number} streamId - The ID of the stream to toggle.
+      */
+     function toggleQuality(streamId) {
+       const button = document.getElementById(`qualityControlBtn-${streamId}`);
+       const currentQuality = button.dataset.quality || 'default';
+ 
+       if (currentQuality === 'default') {
+         // Increase quality
+         ws.send(JSON.stringify({ type: 'increase_quality', streamId }));
+         button.textContent = 'Reset Quality';
+         button.dataset.quality = 'high';
+       } else {
+         // Reset to default
+         ws.send(JSON.stringify({ type: 'reset_quality', streamId }));
+         button.textContent = 'Increase Quality';
+         button.dataset.quality = 'default';
+       }
+     }
+ 
+     /**
+      * Function to toggle the size of a specific video container.
+      * @param {number} streamId - The ID of the stream to toggle.
+      */
+     function toggleContainerSize(streamId) {
+       const container = document.getElementById(`videoContainer-${streamId}`);
+       const button = document.getElementById(`resizeContainerBtn-${streamId}`);
+ 
+       if (container.classList.contains('expanded')) {
+         container.classList.remove('expanded');
+         button.textContent = 'Expand Container';
+       } else {
+         container.classList.add('expanded');
+         button.textContent = 'Shrink Container';
+       }
+     }
+ 
+     /**
+      * Function to request streams one by one using async/await to reduce load.
+      * @param {number} index - The current stream index to request.
+      */
+     async function requestStreamsSequentially(index) {
+       if (index >= streamCount) return; // Base case: all streams requested
+ 
+       // Request the current stream
+       ws.send(JSON.stringify({ type: 'request_stream', streamId: index }));
+       console.log(`Requested stream ID: ${index}`);
+ 
+       // Wait for the stream to be established before requesting the next one
+       // This can be achieved by waiting for the 'offer_needed' message for this stream
+       await waitForOfferNeeded(index);
+ 
+       // Proceed to the next stream
+       await requestStreamsSequentially(index + 1);
+     }
+ 
+     /**
+      * Function to wait for the 'offer_needed' message for a specific stream.
+      * @param {number} streamId - The ID of the stream to wait for.
+      * @returns {Promise} - Resolves when 'offer_needed' is received.
+      */
+     function waitForOfferNeeded(streamId) {
+       return new Promise((resolve) => {
+         function handleMessage(event) {
+           const data = JSON.parse(event.data);
+           if (data.type === 'offer_needed' && data.streamId === streamId) {
+             ws.removeEventListener('message', handleMessage);
+             resolve();
+           }
+         }
+ 
+         ws.addEventListener('message', handleMessage);
+       });
+     }
+ 
+     /**
+      * Function to adjust the sizes of the timestamp elements based on their container sizes.
+      */
+     function adjustTimestampSizes() {
+       const videoContainers = document.querySelectorAll('.video-container');
+       videoContainers.forEach(container => {
+         const timestamp = container.querySelector('.timestamp');
+         const containerWidth = container.offsetWidth;
+         
+         // Example: set font size to 2% of container width, clamped between 12px and 18px
+         let fontSize = containerWidth * 0.02; // 2%
+         fontSize = Math.max(12, Math.min(fontSize, 18)); // Clamp between 12px and 18px
+         timestamp.style.fontSize = `${fontSize}px`;
+         
+         // Adjust padding proportionally
+         timestamp.style.padding = `${fontSize * 0.2}px ${fontSize * 0.4}px`;
+       });
+     }
+ 
+     /**
+      * Function to initialize the WebSocket connection.
+      */
+     function initializeWebSocket() {
+       // Initialize WebSocket connection dynamically based on the current host
+       const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+       const wsPath = '/ws/stream/'; // Adjust the WebSocket path as needed
+       const wsUrl = `${wsProtocol}://${window.location.host}${wsPath}`;
+       ws = new WebSocket(wsUrl);
+ 
+       ws.onopen = () => {
+         console.log("WebSocket connection established.");
+         // Wait for 'stream_count' from the server
+       };
+ 
+       ws.onmessage = async (event) => {
+         const data = JSON.parse(event.data);
+         console.log("Received data:", data);
+ 
+         if (data.type === 'stream_count') {
+           createGridAndRequestStreams(data.count);
+         } else if (data.type === 'offer_needed') {
+           initiateWebRTCConnection(data.streamId);
+         } else if (data.type === 'answer') {
+           const pc = peerConnections[data.streamId];
+           if (!pc) {
+             console.error('No PeerConnection found for streamId', data.streamId);
+             return;
+           }
+           const desc = new RTCSessionDescription({ type: 'answer', sdp: data.sdp });
+           try {
+             await pc.setRemoteDescription(desc);
+             console.log(`Set remote description for stream ${data.streamId}`);
+           } catch (e) {
+             console.error(`Error setting remote description for stream ${data.streamId}:`, e);
+           }
+         } else if (data.type === 'ice') {
+           const pc = peerConnections[data.streamId];
+           if (pc && data.candidate) {
+             try {
+               await pc.addIceCandidate(data.candidate);
+               console.log(`Added ICE candidate for stream ${data.streamId}`);
+             } catch (e) {
+               console.error('Error adding received ICE candidate', e);
+             }
+           }
+         } else if (data.type === 'quality_changed') {
+           // Handle UI updates based on quality changes
+           const button = document.getElementById(`qualityControlBtn-${data.streamId}`);
+           if (data.quality === 'high') {
+             button.textContent = 'Reset Quality';
+             button.dataset.quality = 'high';
+           } else {
+             button.textContent = 'Increase Quality';
+             button.dataset.quality = 'default';
+           }
+         } else if (data.type === 'error') {
+           console.error('Error from server:', data.message);
+           // Optionally, update the UI to reflect the error state
+           const container = videoElements[data.streamId]?.parentElement;
+           if (container) {
+             const stateIndicator = container.querySelector('.connection-state');
+             stateIndicator.className = 'connection-state disconnected';
+           }
+         } else if (data.type === 'ping') {
+           // Respond to server's ping
+           ws.send(JSON.stringify({ type: 'pong' }));
+           console.debug("Sent pong to server.");
+         }
+       };
+ 
+       ws.onerror = (error) => {
+         console.error('WebSocket error:', error);
+       };
+ 
+       ws.onclose = () => {
+         console.log('WebSocket connection closed. Attempting to reconnect...');
+         // Attempt to reconnect after a delay
+         setTimeout(() => {
+           initializeWebSocket();
+         }, 5000); // Retry after 5 seconds
+       };
+     }
+ 
+     /**
+      * Function to initiate a WebRTC connection for a specific stream ID.
+      * @param {number} streamId - The ID of the stream to connect.
+      */
+     async function initiateWebRTCConnection(streamId) {
+       if (peerConnections[streamId]) {
+         console.warn(`PeerConnection for stream ${streamId} already exists.`);
+         return;
+       }
+ 
+       const pc = new RTCPeerConnection({
+         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+         // Add TURN servers here if available
+         // iceServers: [
+         //   { urls: 'stun:stun.l.google.com:19302' },
+         //   { urls: 'turn:your.turn.server:3478', username: 'user', credential: 'pass' }
+         // ]
+       });
+       peerConnections[streamId] = pc;
+       videoElements[streamId].srcObject = new MediaStream();
+ 
+       pc.addTransceiver('video', { direction: 'recvonly' });
+ 
+       pc.ontrack = (event) => {
+         event.streams[0].getTracks().forEach((track) => {
+           videoElements[streamId].srcObject.addTrack(track);
+         });
+       };
+ 
+       pc.onicecandidate = (event) => {
+         if (event.candidate) {
+           ws.send(JSON.stringify({
+             type: 'ice',
+             streamId: streamId,
+             candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
+           }));
+         }
+       };
+ 
+       pc.oniceconnectionstatechange = () => {
+         console.log(`Connection state for stream ${streamId}: ${pc.iceConnectionState}`);
+         const container = videoElements[streamId].parentElement;
+         const stateIndicator = container.querySelector('.connection-state');
+         if (pc.iceConnectionState === 'connected') {
+           stateIndicator.className = 'connection-state connected';
+         } else if (pc.iceConnectionState === 'checking' || pc.iceConnectionState === 'new') {
+           stateIndicator.className = 'connection-state connecting';
+         } else {
+           stateIndicator.className = 'connection-state disconnected';
+           // Optionally attempt to reconnect
+           setTimeout(() => {
+             initiateWebRTCConnection(streamId);
+           }, 5000); // Retry after 5 seconds
+         }
+       };
+ 
+       try {
+         const offer = await pc.createOffer();
+         await pc.setLocalDescription(offer);
+ 
+         ws.send(JSON.stringify({
+           type: 'offer',
+           streamId: streamId,
+           sdp: offer.sdp
+         }));
+ 
+         console.log(`Sent offer for stream ${streamId}`);
+       } catch (error) {
+         console.error(`Error creating offer for stream ${streamId}:`, error);
+       }
+     }
+ 
+     // Initialize WebSocket connection
+     let ws;
+     initializeWebSocket();
+ 
+     // Update timestamps every second for accuracy
+     setInterval(() => {
+       const timestamps = document.querySelectorAll('.timestamp');
+       timestamps.forEach(ts => {
+         ts.textContent = new Date().toLocaleTimeString();
+       });
+     }, 1000); // Update every second
+ 
+     // Adjust timestamp sizes on window resize
+     window.addEventListener('resize', adjustTimestampSizes);
+ 
+     // Optional: Adjust timestamp sizes when the DOM is fully loaded
+     window.addEventListener('load', adjustTimestampSizes);
+   </script>
+ </body>
+ </html>
+ 

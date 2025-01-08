@@ -15,7 +15,7 @@ from app_streaming.views import home
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', home, name='home'),
-    path('app_streaming/', include('app_streaming.urls')),
+    # path('app_streaming/', include('app_streaming.urls')),
 ]
 
 
